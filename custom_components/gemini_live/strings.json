@@ -1,5 +1,5 @@
 {
-  "title": "Gemini Live",
+  "title": "Gemini Assistant",
   "config": {
     "step": {
       "user": {
@@ -13,7 +13,8 @@
           "detailed_logging": "Enable detailed logging",
           "transcribe_gemini": "Transcribe Gemini",
           "encourage_web_search": "Encourage web search",
-          "show_text": "Show text"
+          "show_text": "Show text",
+          "memory_enabled": "Enable durable memory"
         },
         "data_description": {
           "api_key": "Create an API key in Google AI Studio. Audio and text sent through this integration are processed by Google.",
@@ -23,7 +24,8 @@
           "detailed_logging": "Write verbose diagnostic information to the Home Assistant log. Enable only while troubleshooting.",
           "transcribe_gemini": "Stream a transcript of Gemini's spoken reply into Home Assistant. Disabling this gives the lowest reply-audio latency.",
           "encourage_web_search": "Tell Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information.",
-          "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF."
+          "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF.",
+          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini."
         }
       },
       "reconfigure": {
@@ -37,12 +39,14 @@
           "detailed_logging": "Enable detailed logging",
           "transcribe_gemini": "Transcribe Gemini",
           "encourage_web_search": "Encourage web search",
-          "show_text": "Show text"
+          "show_text": "Show text",
+          "memory_enabled": "Enable durable memory"
         },
         "data_description": {
           "transcribe_gemini": "Stream a transcript of Gemini's spoken reply into Home Assistant. Disabling this gives the lowest reply-audio latency.",
           "encourage_web_search": "Tell Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information.",
-          "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF."
+          "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF.",
+          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini."
         }
       }
     }
@@ -60,12 +64,14 @@
           "detailed_logging": "Enable detailed logging",
           "transcribe_gemini": "Transcribe Gemini",
           "encourage_web_search": "Encourage web search",
-          "show_text": "Show text"
+          "show_text": "Show text",
+          "memory_enabled": "Enable durable memory"
         },
         "data_description": {
           "transcribe_gemini": "Stream a transcript of Gemini's spoken reply into Home Assistant. Disabling this gives the lowest reply-audio latency.",
           "encourage_web_search": "Tell Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information.",
-          "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF."
+          "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF.",
+          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini."
         }
       }
     }

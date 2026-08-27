@@ -1,11 +1,13 @@
-# Gemini Live for Home Assistant
+# Gemini Assistant for Home Assistant
 
-[![HACS validation](https://img.shields.io/github/actions/workflow/status/matt123p/ha-gemini-live/validate.yml?branch=main&label=HACS%20validation)](https://github.com/matt123p/ha-gemini-live/actions/workflows/validate.yml)
-[![GitHub release](https://img.shields.io/github/v/release/matt123p/ha-gemini-live)](https://github.com/matt123p/ha-gemini-live/releases)
-[![License](https://img.shields.io/github/license/matt123p/ha-gemini-live)](LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/kian1991/ha-gemini-assistant/tests.yml?branch=main&label=tests)](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/tests.yml)
+[![HACS validation](https://img.shields.io/github/actions/workflow/status/kian1991/ha-gemini-assistant/validate.yml?branch=main&label=HACS%20validation)](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/validate.yml)
+[![License](https://img.shields.io/github/license/kian1991/ha-gemini-assistant)](LICENSE)
 
-Gemini Live is a custom Home Assistant integration that connects the Home Assistant voice
-pipeline directly to Google's Gemini Live API. 
+Gemini Assistant is a custom Home Assistant integration that combines a low-latency
+Gemini Live voice pipeline with locally stored, durable long-term memory. It is
+intended to grow into one controlled assistant stack with conversation history and
+a user-facing memory/chat interface rather than a collection of separate plugins.
 
 Doing this has the advantage of reducing the time it takes to reply because the 
 Speech-to-text and the Text-to-speech are done natively by the Live model.
@@ -119,12 +121,12 @@ Add this repository as a custom repository in HACS:
 
 1. Open HACS in Home Assistant.
 2. Select the three-dot menu, then **Custom repositories**.
-3. Enter `https://github.com/matt123p/ha-gemini-live`.
+3. Enter `https://github.com/kian1991/ha-gemini-assistant`.
 4. Select **Integration** as the category and add the repository.
 5. Find **Gemini Live** in HACS and select **Download**.
 6. Restart Home Assistant when HACS asks you to.
 
-[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=matt123p&repository=ha-gemini-live&category=integration)
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kian1991&repository=ha-gemini-assistant&category=integration)
 
 ### Manual
 
@@ -160,7 +162,7 @@ upgrade to the latest version.
 
 1. In Home Assistant, open **Settings > Devices & services**.
 2. Select **Add integration**.
-3. Search for **Gemini Live**.
+3. Search for **Gemini Assistant**.
 4. Enter your Gemini API key.
 5. Select a Live model and voice.
 6. Optionally enter a system instruction.
@@ -179,9 +181,43 @@ upgrade to the latest version.
 | Transcribe Gemini | Streams Gemini's spoken-response transcript into Home Assistant while native audio is still arriving. Disabled by default for the lowest playback latency. |
 | Encourage web search | Encourages Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information. Disabled by default. |
 | Show text | Exposes a callback function to let Gemini display formatted text/markdown in the Home Assistant chat UI (e.g. lists, instructions, code) instead of the default placeholder. Only active when "Transcribe Gemini" is disabled. Enabled by default. |
+| Durable memory | Exposes local save/read/delete tools and injects a bounded memory index into Gemini's system context. Enabled by default. |
 
 To change the options later, open **Settings > Devices & services**, select
 **Gemini Live**, and select **Configure** or **Reconfigure**.
+
+## Durable Memory
+
+Memory is built into this integration. No second Home Assistant integration or
+LLM API needs to be installed. Gemini receives three integration-owned tools:
+
+- `memory_save` creates or updates one durable fact.
+- `memory_read` loads the full body of one indexed fact.
+- `memory_delete` permanently removes one fact.
+
+Memories are stored under:
+
+```text
+/config/gemini_assistant/memory/
+```
+
+Each memory is a human-editable Markdown file. `MEMORY.md` is a generated index.
+The live prompt rebuilds its index from the individual files, so safe manual edits
+are reflected even before the generated index is refreshed. Memories have no
+automatic expiry in the first release; they remain until updated or deleted.
+
+The default policy allows automatic storage of stable, non-sensitive preferences,
+household facts, routines, names, and terminology. Sensitive personal information
+requires an explicit request to remember it. Authentication secrets are never
+eligible for memory. Temporary commands, device states, guesses, and full chat
+transcripts must not be stored.
+
+The local index and any memory Gemini reads are sent to the Gemini API. Disable
+**Durable memory** in the integration options to remove the tools and memory context
+from future Gemini sessions. Disabling memory does not delete existing files.
+
+See [Memory design and test guide](docs/memory.md) for the exact semantics,
+file format, recovery behavior, and test procedure.
 
 ## Create An Assist Pipeline
 
@@ -266,9 +302,9 @@ If you are using a device with a screen (like a wall tablet, phone, or browser),
 ## Supported Audio And Languages
 
 The STT entity accepts WAV audio containing 16-bit, 16 kHz, mono PCM. This is
-the format used by a compatible Home Assistant Assist pipeline. Gemini's 24 kHz
-native response audio is converted to 16 kHz PCM and streamed through the TTS
-stage as it arrives. When **Transcribe Gemini** is enabled, Home Assistant also
+the format used by a compatible Home Assistant Assist pipeline. Gemini's native
+24 kHz response audio remains at 24 kHz and is streamed through the TTS stage as
+it arrives. When **Transcribe Gemini** is enabled, Home Assistant also
 streams transcript text into TTS and starts playback after its built-in
 streaming threshold is reached. Short transcribed replies may therefore wait
 until their transcript is complete. Disabling the option starts playback from
@@ -311,6 +347,8 @@ as a Home Assistant compatibility alias for English. See Google's current
 - The Gemini API key is stored in the Home Assistant config entry.
 - Home Assistant entity names, tool schemas, and tool results may be sent to
   Google when Assist control is available.
+- Durable memory files remain local, but their index and any memory Gemini reads
+  are included in Gemini requests.
 - Detailed logs can contain transcripts and tool-call details. Disable detailed
   logging after troubleshooting and inspect logs before sharing them.
 - Treat prompts and model output as untrusted. Expose only the entities and
@@ -370,4 +408,5 @@ The generator uses only the Python standard library.
 
 ## License
 
-Gemini Live for Home Assistant is available under the [MIT License](LICENSE).
+Gemini Assistant for Home Assistant is available under the [MIT License](LICENSE).
+See [Third-party notices](THIRD_PARTY_NOTICES.md) for its upstream provenance.

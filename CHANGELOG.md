@@ -1,6 +1,16 @@
 # Changelog
 
-All notable changes to Gemini Live for Home Assistant are documented here.
+All notable changes to Gemini Assistant for Home Assistant are documented here.
+
+## 1.1.0
+
+- Added built-in durable long-term memory with local Markdown storage.
+- Added `memory_save`, `memory_read`, and `memory_delete` Gemini Live tools.
+- Added a bounded live memory index and explicit privacy/retention policy.
+- Added atomic writes, input limits, path validation, and unit tests.
+- Kept Gemini's response audio at its native 24 kHz sample rate.
+- Renamed the distribution to Gemini Assistant while retaining the existing
+  `gemini_live` integration domain for config-entry compatibility.
 
 ## 1.0.2
 

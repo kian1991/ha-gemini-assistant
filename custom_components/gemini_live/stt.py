@@ -43,6 +43,7 @@ from .const import (
     DEFAULT_SHOW_TEXT,
     DOMAIN,
     GEMINI_LIVE_TTS_PLACEHOLDER,
+    GEMINI_MEMORY_MANAGER_KEY,
     GEMINI_SESSION_MANAGER_KEY,
     GEMINI_TURN_STORE_KEY,
     SUPPORTED_LANGUAGES,
@@ -53,7 +54,9 @@ from .runtime import (
     TextStream,
     active_pipeline_conversation_id,
 )
-from .utils import resample_24k_to_16k, set_detailed_logging
+from .const import NATIVE_AUDIO_SAMPLE_RATE
+from .memory import MEMORY_TOOL_NAMES, MEMORY_TOOLS
+from .utils import set_detailed_logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -384,7 +387,7 @@ class GeminiLiveSTT(SpeechToTextEntity):
     def __init__(self, entry: ConfigEntry) -> None:
         """Initialize the STT entity."""
         self.entry = entry
-        self._attr_name = "Gemini Live"
+        self._attr_name = "Gemini Assistant"
         self._attr_unique_id = f"{entry.entry_id}_stt"
 
     @property
@@ -488,6 +491,13 @@ class GeminiLiveSTT(SpeechToTextEntity):
         )
         if not transcribe_gemini and show_text:
             gemini_tools = _add_show_text_tool(gemini_tools)
+        memory_manager = entry_data.get(GEMINI_MEMORY_MANAGER_KEY)
+        if memory_manager is not None:
+            system_instruction = (
+                f"{system_instruction}\n\n"
+                f"{await memory_manager.async_system_instruction()}"
+            )
+            gemini_tools = [*gemini_tools, *MEMORY_TOOLS]
         function_declarations = [
             declaration
             for tool in gemini_tools
@@ -734,6 +744,24 @@ class GeminiLiveSTT(SpeechToTextEntity):
                                         "success": True,
                                         "displayed": True,
                                     }
+                                elif tool_name in MEMORY_TOOL_NAMES:
+                                    if memory_manager is None:
+                                        tool_result = {"error": "Memory is disabled"}
+                                    else:
+                                        try:
+                                            tool_result = (
+                                                await memory_manager.async_call_tool(
+                                                    tool_name,
+                                                    tool_args,
+                                                )
+                                            )
+                                        except Exception as err:  # noqa: BLE001
+                                            _LOGGER.error(
+                                                "Memory tool %s failed: %s",
+                                                tool_name,
+                                                err,
+                                            )
+                                            tool_result = {"error": str(err)}
                                 elif llm_api is not None:
                                     try:
                                         tool_input = llm.ToolInput(
@@ -815,8 +843,7 @@ class GeminiLiveSTT(SpeechToTextEntity):
                                     raw_chunk = part.inline_data.data
                                     audio_response_chunk_count += 1
                                     audio_response_bytes += len(raw_chunk)
-                                    resampled_chunk = resample_24k_to_16k(raw_chunk)
-                                    response_audio_stream.add_chunk(resampled_chunk)
+                                    response_audio_stream.add_chunk(raw_chunk)
                                     first_audio.set()
                                     _LOGGER.debug(
                                         "[turn=%s] inline audio chunk bytes=%d total_audio_chunks=%d",
@@ -1035,9 +1062,10 @@ class GeminiLiveSTT(SpeechToTextEntity):
 
         if first_audio.is_set():
             _LOGGER.warning(
-                "STT: Gemini audio ready: text=%d chars, raw_audio=%d bytes",
+                "STT: Gemini audio ready: text=%d chars, raw_audio=%d bytes sample_rate=%d channels=1 bits=16",
                 len(response_text),
                 all_audio_24k_len,
+                NATIVE_AUDIO_SAMPLE_RATE,
             )
         else:
             _LOGGER.warning("STT: No audio response received from Gemini Live")

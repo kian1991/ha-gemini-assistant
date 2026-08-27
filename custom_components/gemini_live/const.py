@@ -1,6 +1,7 @@
 """Constants for the Gemini Live integration."""
 
 DOMAIN = "gemini_live"
+NATIVE_AUDIO_SAMPLE_RATE = 24000
 
 CONF_API_KEY = "api_key"
 CONF_MODEL = "model"
@@ -10,12 +11,14 @@ CONF_DETAILED_LOGGING = "detailed_logging"
 CONF_TRANSCRIBE_GEMINI = "transcribe_gemini"
 CONF_ENCOURAGE_WEB_SEARCH = "encourage_web_search"
 CONF_SHOW_TEXT = "show_text"
+CONF_MEMORY_ENABLED = "memory_enabled"
 
 DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 DEFAULT_VOICE = "Puck"
 DEFAULT_TRANSCRIBE_GEMINI = False
 DEFAULT_ENCOURAGE_WEB_SEARCH = False
 DEFAULT_SHOW_TEXT = True
+DEFAULT_MEMORY_ENABLED = True
 GEMINI_LIVE_TTS_PLACEHOLDER = "-- gemini live --"
 DEFAULT_SYSTEM_INSTRUCTION = (
     "You are a helpful, concise voice assistant for the user's smart home, powered by Home Assistant. "
@@ -159,3 +162,4 @@ AVAILABLE_VOICES: list[str] = list(dict.fromkeys(name for name, _, _ in AVAILABL
 # Runtime objects stored under hass.data[DOMAIN][config_entry_id].
 GEMINI_SESSION_MANAGER_KEY = "session_manager"
 GEMINI_TURN_STORE_KEY = "turn_store"
+GEMINI_MEMORY_MANAGER_KEY = "memory_manager"

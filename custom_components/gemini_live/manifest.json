@@ -1,13 +1,13 @@
 {
   "domain": "gemini_live",
-  "name": "Gemini Live",
+  "name": "Gemini Assistant",
   "after_dependencies": ["assist_pipeline"],
-  "codeowners": ["@matt123p"],
+  "codeowners": ["@kian1991"],
   "config_flow": true,
-  "documentation": "https://github.com/matt123p/ha-gemini-live",
+  "documentation": "https://github.com/kian1991/ha-gemini-assistant",
   "integration_type": "service",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/matt123p/ha-gemini-live/issues",
+  "issue_tracker": "https://github.com/kian1991/ha-gemini-assistant/issues",
   "requirements": ["google-genai>=1.0.0"],
-  "version": "1.0.3"
+  "version": "1.1.0"
 }

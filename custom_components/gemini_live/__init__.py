@@ -6,11 +6,15 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_DETAILED_LOGGING,
+    CONF_MEMORY_ENABLED,
+    DEFAULT_MEMORY_ENABLED,
     DOMAIN,
+    GEMINI_MEMORY_MANAGER_KEY,
     GEMINI_SESSION_MANAGER_KEY,
     GEMINI_TURN_STORE_KEY,
 )
 from . import stt, tts, conversation
+from .memory import MemoryManager
 from .runtime import LiveSessionManager, TurnStore
 from .utils import set_detailed_logging
 
@@ -22,11 +26,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     config = {**entry.data, **entry.options}
     set_detailed_logging(bool(config.get(CONF_DETAILED_LOGGING, False)))
+    memory_manager = None
+    if bool(config.get(CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED)):
+        memory_manager = await MemoryManager.async_create(
+            hass,
+            hass.config.path("gemini_assistant", "memory"),
+        )
 
     # Store configuration data (merging data and options)
     hass.data[DOMAIN][entry.entry_id] = {
         **entry.data,
         **entry.options,
+        GEMINI_MEMORY_MANAGER_KEY: memory_manager,
         GEMINI_SESSION_MANAGER_KEY: LiveSessionManager(),
         GEMINI_TURN_STORE_KEY: TurnStore(),
     }

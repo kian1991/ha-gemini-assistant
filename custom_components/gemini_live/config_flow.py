@@ -10,12 +10,14 @@ from .const import (
     CONF_API_KEY,
     CONF_DETAILED_LOGGING,
     CONF_ENCOURAGE_WEB_SEARCH,
+    CONF_MEMORY_ENABLED,
     CONF_MODEL,
     CONF_SHOW_TEXT,
     CONF_TRANSCRIBE_GEMINI,
     CONF_VOICE,
     DEFAULT_TRANSCRIBE_GEMINI,
     DEFAULT_ENCOURAGE_WEB_SEARCH,
+    DEFAULT_MEMORY_ENABLED,
     DEFAULT_SHOW_TEXT,
     CONF_SYSTEM_INSTRUCTION,
     DEFAULT_MODEL,
@@ -42,7 +44,7 @@ VOICE_SELECTOR = selector.SelectSelector(
 
 
 class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Gemini Live."""
+    """Handle a config flow for Gemini Assistant."""
 
     VERSION = 1
 
@@ -51,7 +53,7 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             user_input.setdefault(CONF_SYSTEM_INSTRUCTION, "")
-            return self.async_create_entry(title="Gemini Live", data=user_input)
+            return self.async_create_entry(title="Gemini Assistant", data=user_input)
 
         return self.async_show_form(
             step_id="user",
@@ -73,6 +75,10 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_SHOW_TEXT,
                         default=DEFAULT_SHOW_TEXT,
+                    ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_MEMORY_ENABLED,
+                        default=DEFAULT_MEMORY_ENABLED,
                     ): selector.BooleanSelector(),
                 }
             ),
@@ -107,6 +113,9 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         current_show_text = config.get(
             CONF_SHOW_TEXT, DEFAULT_SHOW_TEXT
         )
+        current_memory_enabled = config.get(
+            CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED
+        )
  
         return self.async_show_form(
             step_id="reconfigure",
@@ -131,6 +140,10 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_SHOW_TEXT,
                         default=current_show_text,
+                    ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_MEMORY_ENABLED,
+                        default=current_memory_enabled,
                     ): selector.BooleanSelector(),
                 }
             ),
@@ -171,6 +184,9 @@ class GeminiLiveOptionsFlowHandler(config_entries.OptionsFlow):
         current_show_text = config.get(
             CONF_SHOW_TEXT, DEFAULT_SHOW_TEXT
         )
+        current_memory_enabled = config.get(
+            CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED
+        )
  
         schema_dict = {
             vol.Required(CONF_API_KEY, default=current_api_key): str,
@@ -192,6 +208,10 @@ class GeminiLiveOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_SHOW_TEXT,
                 default=current_show_text,
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_MEMORY_ENABLED,
+                default=current_memory_enabled,
             ): selector.BooleanSelector(),
         }
 

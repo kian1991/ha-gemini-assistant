@@ -29,6 +29,7 @@ from .const import (
     DEFAULT_SHOW_TEXT,
     DOMAIN,
     GEMINI_LIVE_TTS_PLACEHOLDER,
+    GEMINI_MEMORY_MANAGER_KEY,
     GEMINI_SESSION_MANAGER_KEY,
     GEMINI_TURN_STORE_KEY,
     SUPPORTED_LANGUAGES,
@@ -47,7 +48,9 @@ from .stt import (
     _add_show_text_tool,
 )
 from .runtime import AudioStream, new_conversation_id
-from .utils import pcm_to_wav, resample_24k_to_16k
+from .const import NATIVE_AUDIO_SAMPLE_RATE
+from .memory import MEMORY_TOOL_NAMES, MEMORY_TOOLS
+from .utils import pcm_to_wav
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,7 +81,7 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
         """Initialize the agent."""
         self.hass = hass
         self.entry = entry
-        self._name = "Gemini Live"
+        self._name = "Gemini Assistant"
         self._unique_id = f"{entry.entry_id}_conversation"
 
     @property
@@ -168,6 +171,16 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
             if not transcribe_gemini and show_text:
                 gemini_tools = _add_show_text_tool(gemini_tools)
 
+            memory_manager = self.hass.data[DOMAIN][self.entry.entry_id].get(
+                GEMINI_MEMORY_MANAGER_KEY
+            )
+            if memory_manager is not None:
+                system_instruction = (
+                    f"{system_instruction}\n\n"
+                    f"{await memory_manager.async_system_instruction()}"
+                )
+                gemini_tools = [*gemini_tools, *MEMORY_TOOLS]
+
             _LOGGER.debug(
                 "Conversation text path loaded %d HA Assist tools",
                 len(gemini_tools),
@@ -183,6 +196,15 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
             if not transcribe_gemini and show_text:
                 system_instruction = _add_show_text_instruction(system_instruction)
                 gemini_tools = _add_show_text_tool(gemini_tools)
+            memory_manager = self.hass.data[DOMAIN][self.entry.entry_id].get(
+                GEMINI_MEMORY_MANAGER_KEY
+            )
+            if memory_manager is not None:
+                system_instruction = (
+                    f"{system_instruction}\n\n"
+                    f"{await memory_manager.async_system_instruction()}"
+                )
+                gemini_tools = [*gemini_tools, *MEMORY_TOOLS]
             return (
                 None,
                 gemini_tools,
@@ -241,7 +263,7 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
 
         text_response_parts: list[str] = []
         audio_response_chunks: list[bytes] = []
-        resampled_pcm_chunks: list[bytes] = []
+        native_pcm_chunks: list[bytes] = []
         wav_data = b""
         native_audio_model = "native-audio" in (model or "")
 
@@ -295,6 +317,27 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
                                         "success": True,
                                         "displayed": True,
                                     }
+                                elif tool_name in MEMORY_TOOL_NAMES:
+                                    memory_manager = entry_data.get(
+                                        GEMINI_MEMORY_MANAGER_KEY
+                                    )
+                                    if memory_manager is None:
+                                        tool_result = {"error": "Memory is disabled"}
+                                    else:
+                                        try:
+                                            tool_result = (
+                                                await memory_manager.async_call_tool(
+                                                    tool_name,
+                                                    tool_args,
+                                                )
+                                            )
+                                        except Exception as err:  # noqa: BLE001
+                                            _LOGGER.error(
+                                                "Memory tool %s failed: %s",
+                                                tool_name,
+                                                err,
+                                            )
+                                            tool_result = {"error": str(err)}
                                 elif llm_api is not None:
                                     try:
                                         tool_result = await llm_api.async_call_tool(
@@ -334,12 +377,10 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
                                 if part.inline_data and part.inline_data.data:
                                     raw_chunk = part.inline_data.data
                                     audio_response_chunks.append(raw_chunk)
-                                    resampled_pcm_chunks.append(
-                                        resample_24k_to_16k(raw_chunk)
-                                    )
+                                    native_pcm_chunks.append(raw_chunk)
                                     wav_data = pcm_to_wav(
-                                        b"".join(resampled_pcm_chunks),
-                                        16000,
+                                        b"".join(native_pcm_chunks),
+                                        NATIVE_AUDIO_SAMPLE_RATE,
                                     )
 
                         if content.output_transcription and content.output_transcription.text:
@@ -382,11 +423,12 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
         turn_store.add_audio(assistant_text, wav_data)
 
         _LOGGER.warning(
-            "[turn=%s] conversation text path complete text_chars=%d audio_chunks=%d wav_bytes=%d elapsed=%.3fs",
+            "[turn=%s] conversation text path complete text_chars=%d audio_chunks=%d wav_bytes=%d sample_rate=%d elapsed=%.3fs",
             turn_id,
             len(assistant_text),
             len(audio_response_chunks),
             len(wav_data),
+            NATIVE_AUDIO_SAMPLE_RATE,
             time.monotonic() - started_at,
         )
         return assistant_text
