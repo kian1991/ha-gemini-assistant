@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   validate-hacs:
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - name: HACS validation
