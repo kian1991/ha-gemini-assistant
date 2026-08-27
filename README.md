@@ -74,27 +74,6 @@ Gemini Live can be used side-by-side with the official integration.
 | Model stability | Uses preview Live models | Offers the models and settings supported by Home Assistant Core |
 | Support channel | Community repository issues | Home Assistant Core issue tracker and documentation |
 
-### Recommended: Set Up Both Integrations
-
-It is recommended to set up the official Google Gemini integration first to
-confirm that its conversation agent, Home Assistant control, and API key all
-work correctly. This provides a known-good baseline before adding Gemini Live.
-
-You *can* have two completely separate voice assistants in Home Assistant, so
-once you have installed the official Gemini integration, you do not have to 
-uninstall it to install the Gemini Live integration.
-
-Use the standard Gemini assistant for typed conversations. Although Gemini Live
-supports typed and text-only operation, it uses a Live audio-capable model to 
-do so. That is generally more expensive than using a model intended for 
-text-only requests. Use the Gemini Live assistant when you specifically want 
-direct audio streaming and native spoken responses.
-
-It is also a bit easier to debug the integration of Home Assistant with a the
-voice assistant in the offical integration.  If you are having issues with Gemini
-refusing to read or control something in Home Assistant, go back to the offical
-integration and see if it works there first.
-
 ## Prerequisites
 
 Before installing, you need:
