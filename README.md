@@ -1,8 +1,8 @@
 # Gemini Assistant for Home Assistant
 
-[![Tests](https://img.shields.io/github/actions/workflow/status/kian1991/ha-gemini-assistant/tests.yml?branch=main&label=tests)](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/tests.yml)
-[![HACS validation](https://img.shields.io/github/actions/workflow/status/kian1991/ha-gemini-assistant/validate.yml?branch=main&label=HACS%20validation)](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/validate.yml)
-[![License](https://img.shields.io/github/license/kian1991/ha-gemini-assistant)](LICENSE)
+[![Tests](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/tests.yml)
+[![Validate](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/kian1991/ha-gemini-assistant/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Gemini Assistant is a custom Home Assistant integration that combines a low-latency
 Gemini Live voice pipeline with locally stored, durable long-term memory. It is
