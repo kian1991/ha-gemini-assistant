@@ -155,6 +155,7 @@ upgrade to the latest version.
 | API key | Google Gemini API key used for every Live connection. |
 | Live model | Preview Live model used for voice and typed conversations. |
 | Voice | Prebuilt voice used for Gemini's native audio responses. |
+| Home Assistant LLM APIs | The Home Assistant LLM APIs whose tools Gemini can call. Defaults to the Assist API. Additional entries appear automatically for every loaded [Model Context Protocol](https://www.home-assistant.io/integrations/mcp/) server and any other integration-registered LLM API. |
 | System instruction | Optional personality and behavior instruction. Home Assistant's Assist API prompt is appended automatically. |
 | Detailed logging | Enables verbose logs from this custom integration. These logs can contain transcripts, model details, and tool-call information. |
 | Transcribe Gemini | Streams Gemini's spoken-response transcript into Home Assistant while native audio is still arriving. Disabled by default for the lowest playback latency. |
@@ -242,6 +243,40 @@ Examples:
 Tool execution is performed by Home Assistant through its Assist LLM API. The
 integration sends tool definitions and tool results to Gemini so it can decide
 what to call and describe the outcome.
+
+## Use Other LLM APIs And MCP Servers
+
+Besides the Assist API, Gemini Live can use the tools of any LLM API that is
+registered in Home Assistant, including servers connected through Home
+Assistant's official
+[Model Context Protocol](https://www.home-assistant.io/integrations/mcp/)
+integration (for example the Google Workspace Gmail, Drive, Docs, and Calendar
+MCP endpoints).
+
+1. Add the MCP server through **Settings > Devices & services > Add
+   integration > Model Context Protocol**. Home Assistant owns the MCP
+   transport, authentication, OAuth, and reauthentication.
+2. Open the Gemini Live options and select the server in **Home Assistant LLM
+   APIs**. The list is populated dynamically from Home Assistant; nothing is
+   hardcoded per provider.
+3. Start a new conversation. The server's tools are exposed to Gemini next to
+   the local tools.
+
+Notes:
+
+- With a single selected API, tool names are unchanged. With two or more
+  selected APIs, Home Assistant namespaces every tool as `<api-name>__<tool>`
+  (for example `assist__HassTurnOn`) and routes calls back to the owning API.
+  Renaming the MCP config entry gives its tools a friendlier prefix.
+- If a selected API is unavailable (for example the MCP entry failed to load),
+  it is skipped with a warning and the session continues with the remaining
+  APIs and local tools.
+- If an MCP server requires OAuth and its token becomes invalid, the tool call
+  fails with a safe error while Home Assistant's MCP integration starts its
+  reauthentication flow. Complete the reauth from the Home Assistant
+  notification, then ask again.
+- Gemini Live currently supports at most 128 tool declarations per session;
+  selecting many large MCP servers at once can exceed this.
 
 ## Enable Google Search
 

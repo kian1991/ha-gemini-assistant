@@ -9,6 +9,7 @@
           "api_key": "Gemini API key",
           "model": "Live model",
           "voice": "Voice",
+          "llm_hass_api": "Home Assistant LLM APIs",
           "system_instruction": "System instruction",
           "detailed_logging": "Enable detailed logging",
           "transcribe_gemini": "Transcribe Gemini",
@@ -25,7 +26,8 @@
           "transcribe_gemini": "Stream a transcript of Gemini's spoken reply into Home Assistant. Disabling this gives the lowest reply-audio latency.",
           "encourage_web_search": "Tell Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information.",
           "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF.",
-          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini."
+          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini.",
+          "llm_hass_api": "Home Assistant LLM APIs whose tools Gemini can call. Includes the Assist API for device control and any Model Context Protocol server entries. Selecting more than one API prefixes tool names with the API name."
         }
       },
       "reconfigure": {
@@ -35,6 +37,7 @@
           "api_key": "Gemini API key",
           "model": "Live model",
           "voice": "Voice",
+          "llm_hass_api": "Home Assistant LLM APIs",
           "system_instruction": "System instruction",
           "detailed_logging": "Enable detailed logging",
           "transcribe_gemini": "Transcribe Gemini",
@@ -46,7 +49,8 @@
           "transcribe_gemini": "Stream a transcript of Gemini's spoken reply into Home Assistant. Disabling this gives the lowest reply-audio latency.",
           "encourage_web_search": "Tell Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information.",
           "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF.",
-          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini."
+          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini.",
+          "llm_hass_api": "Home Assistant LLM APIs whose tools Gemini can call. Includes the Assist API for device control and any Model Context Protocol server entries. Selecting more than one API prefixes tool names with the API name."
         }
       }
     }
@@ -60,6 +64,7 @@
           "api_key": "Gemini API key",
           "model": "Live model",
           "voice": "Voice",
+          "llm_hass_api": "Home Assistant LLM APIs",
           "system_instruction": "System instruction",
           "detailed_logging": "Enable detailed logging",
           "transcribe_gemini": "Transcribe Gemini",
@@ -71,7 +76,8 @@
           "transcribe_gemini": "Stream a transcript of Gemini's spoken reply into Home Assistant. Disabling this gives the lowest reply-audio latency.",
           "encourage_web_search": "Tell Gemini to use an exposed search-like Assist tool for current, recent, time-sensitive, or explicitly requested online information.",
           "show_text": "Expose show_text tool to allow Gemini to display formatted text to the user when transcription is OFF.",
-          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini."
+          "memory_enabled": "Store durable memories locally as editable Markdown files. The memory index and memories Gemini reads are sent to Gemini.",
+          "llm_hass_api": "Home Assistant LLM APIs whose tools Gemini can call. Includes the Assist API for device control and any Model Context Protocol server entries. Selecting more than one API prefixes tool names with the API name."
         }
       }
     }

@@ -32,11 +32,13 @@ from .const import (
     CONF_API_KEY,
     CONF_DETAILED_LOGGING,
     CONF_ENCOURAGE_WEB_SEARCH,
+    CONF_LLM_HASS_API,
     CONF_MODEL,
     CONF_SYSTEM_INSTRUCTION,
     CONF_SHOW_TEXT,
     CONF_TRANSCRIBE_GEMINI,
     CONF_VOICE,
+    DEFAULT_LLM_HASS_API,
     DEFAULT_TRANSCRIBE_GEMINI,
     DEFAULT_ENCOURAGE_WEB_SEARCH,
     DEFAULT_SYSTEM_INSTRUCTION,
@@ -56,7 +58,17 @@ from .runtime import (
 )
 from .const import NATIVE_AUDIO_SAMPLE_RATE
 from .memory import MEMORY_TOOL_NAMES, MEMORY_TOOLS
-from .utils import set_detailed_logging
+from .utils import normalize_llm_api_selection, set_detailed_logging
+
+# Home Assistant 2026.9 replaces voluptuous_openapi with probatio as its
+# vol.Schema -> OpenAPI converter. Both expose the same call signature.
+try:
+    from voluptuous_openapi import convert as _convert_schema_to_openapi
+except ImportError:  # pragma: no cover - depends on installed HA version
+    try:
+        from probatio import to_openapi as _convert_schema_to_openapi
+    except ImportError:
+        _convert_schema_to_openapi = None
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -149,11 +161,31 @@ _SHOW_TEXT_TOOL = {
     ]
 }
 
+# Tool names owned by this integration. They are dispatched locally, before any
+# HA LLM API, so an HA tool with the same name would be unreachable and must not
+# be exposed to Gemini.
+LOCAL_TOOL_NAMES = frozenset(
+    {
+        END_CONVERSATION_TOOL_NAME,
+        SHOW_TEXT_TOOL_NAME,
+        *MEMORY_TOOL_NAMES,
+    }
+)
+
+
+def _strip_tool_namespace(name: str) -> str:
+    """Return a tool name without the Merged-API namespace prefix.
+
+    When multiple HA LLM APIs are selected, Home Assistant namespaces every
+    tool as "<api-name-slug>__<tool>". Heuristics on tool names must only look
+    at the original tool name, not the API name.
+    """
+    return name.split("__", 1)[-1]
 
 
 def _is_search_tool_name(name: str) -> bool:
     """Return whether a tool name indicates web-search capability."""
-    lowered_name = name.lower()
+    lowered_name = _strip_tool_namespace(name).lower()
     return any(hint in lowered_name for hint in _SEARCH_TOOL_HINTS)
 
 
@@ -219,18 +251,28 @@ def _format_tool_for_gemini_live(
 ) -> dict[str, Any]:
     """Convert an HA LLM Tool to a Gemini Live functionDeclaration dict."""
     try:
-        from voluptuous_openapi import convert  # type: ignore[import]
-
-        if tool.parameters.schema:
-            raw_schema = convert(
+        if not tool.parameters.schema:
+            parameters: dict | None = None
+        elif _convert_schema_to_openapi is None:
+            _LOGGER.warning(
+                "No schema converter available (voluptuous_openapi/probatio); "
+                "tool %s is exposed without parameters",
+                tool.name,
+            )
+            parameters = None
+        else:
+            raw_schema = _convert_schema_to_openapi(
                 tool.parameters,
                 custom_serializer=custom_serializer,
             )
-            parameters: dict | None = _format_schema_for_gemini(raw_schema)
-        else:
-            parameters = None
+            parameters = _format_schema_for_gemini(raw_schema)
     except Exception as exc:  # noqa: BLE001
-        _LOGGER.debug("Could not convert schema for tool %s: %s", tool.name, exc)
+        _LOGGER.debug(
+            "Could not convert schema for tool %s: %s: %s",
+            tool.name,
+            exc.__class__.__name__,
+            exc,
+        )
         parameters = None
 
     decl: dict[str, Any] = {
@@ -252,19 +294,41 @@ def _format_tools_for_gemini_live(
     custom_serializer: Callable[[Any], Any] | None = None,
     encourage_web_search: bool = False,
 ) -> list[dict[str, Any]]:
-    """Convert HA LLM tools to Gemini Live tool declarations."""
-    return [
-        {
-            "function_declarations": [
-                _format_tool_for_gemini_live(
-                    tool,
-                    custom_serializer,
-                    encourage_web_search,
-                )
-            ]
-        }
-        for tool in tools
-    ]
+    """Convert HA LLM tools to Gemini Live tool declarations.
+
+    Tools whose name collides with an integration-owned tool or an earlier HA
+    tool are skipped: Gemini rejects duplicate function names, and the local
+    dispatcher would shadow them anyway.
+    """
+    declarations: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for tool in tools:
+        if tool.name in LOCAL_TOOL_NAMES:
+            _LOGGER.warning(
+                "HA LLM API tool %r collides with an integration-owned tool "
+                "and is not exposed to Gemini",
+                tool.name,
+            )
+            continue
+        if tool.name in seen_names:
+            _LOGGER.warning(
+                "Duplicate HA LLM API tool %r is not exposed to Gemini",
+                tool.name,
+            )
+            continue
+        seen_names.add(tool.name)
+        declarations.append(
+            {
+                "function_declarations": [
+                    _format_tool_for_gemini_live(
+                        tool,
+                        custom_serializer,
+                        encourage_web_search,
+                    )
+                ]
+            }
+        )
+    return declarations
 
 
 def _add_end_conversation_tool(
@@ -325,6 +389,73 @@ def _validate_tool_results(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _validate_tool_results(item) for key, item in value.items()}
     return value
+
+
+async def _async_resolve_llm_apis(
+    hass: HomeAssistant,
+    api_ids: list[str],
+    llm_context: llm.LLMContext,
+) -> llm.APIInstance | None:
+    """Resolve the configured HA LLM APIs into one API instance.
+
+    Multiple selected APIs are merged by Home Assistant itself
+    (llm.MergedAPI), which namespaces tool names and routes calls back to the
+    owning API. APIs that are not currently registered (for example an MCP
+    server whose config entry failed to load) are skipped with a warning so a
+    single unavailable provider does not break the Live session.
+    """
+    registered = {api.id: api.name for api in llm.async_get_apis(hass)}
+    for api_id in api_ids:
+        if api_id not in registered:
+            _LOGGER.warning(
+                "Configured HA LLM API %r is not available and will be skipped",
+                api_id,
+            )
+    selected = [api_id for api_id in api_ids if api_id in registered]
+    if not selected:
+        return None
+
+    try:
+        instance = await llm.async_get_api(hass, selected, llm_context)
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.warning(
+            "Could not load HA LLM APIs %s together (%s: %s); "
+            "retrying each API individually",
+            selected,
+            exc.__class__.__name__,
+            exc,
+        )
+        loadable: list[str] = []
+        for api_id in selected:
+            try:
+                await llm.async_get_api(hass, [api_id], llm_context)
+            except Exception as single_exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "HA LLM API %r (%s) failed to load and will be skipped: %s: %s",
+                    api_id,
+                    registered[api_id],
+                    single_exc.__class__.__name__,
+                    single_exc,
+                )
+            else:
+                loadable.append(api_id)
+        if not loadable:
+            return None
+        selected = loadable
+        instance = await llm.async_get_api(hass, selected, llm_context)
+
+    _LOGGER.debug(
+        "Loaded HA LLM APIs %s with %d tools",
+        [f"{api_id} ({registered[api_id]})" for api_id in selected],
+        len(instance.tools),
+    )
+    if len(selected) > 1 and _LOGGER.isEnabledFor(logging.DEBUG):
+        tools_per_namespace: dict[str, int] = {}
+        for tool in instance.tools:
+            namespace = getattr(tool, "namespace", "(unknown)")
+            tools_per_namespace[namespace] = tools_per_namespace.get(namespace, 0) + 1
+        _LOGGER.debug("Tools per HA LLM API namespace: %s", tools_per_namespace)
+    return instance
 
 
 # ---------------------------------------------------------------------------
@@ -409,6 +540,7 @@ class GeminiLiveSTT(SpeechToTextEntity):
         transcribe_gemini: bool,
         encourage_web_search: bool,
         show_text: bool,
+        llm_api_ids: list[str],
         result_future: asyncio.Future[SpeechResult],
     ) -> SpeechResult:
         """Process audio using the google-genai Live SDK."""
@@ -446,10 +578,10 @@ class GeminiLiveSTT(SpeechToTextEntity):
         system_instruction = custom_instruction or DEFAULT_SYSTEM_INSTRUCTION
 
         try:
-            llm_api = await llm.async_get_api(
-                hass=self.hass,
-                api_id=llm.LLM_API_ASSIST,
-                llm_context=llm.LLMContext(
+            llm_api = await _async_resolve_llm_apis(
+                self.hass,
+                llm_api_ids,
+                llm.LLMContext(
                     platform=DOMAIN,
                     context=Context(),
                     language=metadata.language or "en",
@@ -457,6 +589,14 @@ class GeminiLiveSTT(SpeechToTextEntity):
                     device_id=None,
                 ),
             )
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Could not load HA LLM APIs %s: %s: %s. Tools will be unavailable.",
+                llm_api_ids,
+                exc.__class__.__name__,
+                exc,
+            )
+        if llm_api is not None:
             ha_tools = llm_api.tools
 
             api_prompt = llm_api.api_prompt
@@ -468,12 +608,6 @@ class GeminiLiveSTT(SpeechToTextEntity):
                 system_instruction,
                 ha_tools,
                 encourage_web_search,
-            )
-            _LOGGER.debug("Loaded HA Assist LLM API with %d tools", len(ha_tools))
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.warning(
-                "Could not load HA Assist LLM API: %s. Tools will be unavailable.",
-                exc,
             )
 
         system_instruction = _add_end_conversation_instruction(system_instruction)
@@ -508,6 +642,13 @@ class GeminiLiveSTT(SpeechToTextEntity):
             len(function_declarations),
             [definition["name"] for definition in function_declarations],
         )
+        if len(function_declarations) > 128:
+            _LOGGER.warning(
+                "Exposing %d tools to Gemini Live; the Gemini API supports at "
+                "most 128 function declarations. Deselect an LLM API in the "
+                "Gemini Live options to reduce the tool count.",
+                len(function_declarations),
+            )
 
         _LOGGER.warning(
             "[turn=%s] creating genai client", turn_id
@@ -724,10 +865,19 @@ class GeminiLiveSTT(SpeechToTextEntity):
                                 tool_name = call.name or ""
                                 tool_args = _escape_decode(call.args or {})
                                 call_id = call.id
+                                route = (
+                                    "local"
+                                    if tool_name in LOCAL_TOOL_NAMES
+                                    else "ha_llm"
+                                )
+                                # Argument keys only: HA LLM API tools (for
+                                # example mail tools) can carry sensitive
+                                # argument values.
                                 _LOGGER.info(
-                                    "Gemini Live tool call: %s(%s)",
+                                    "Gemini tool call: name=%s route=%s arg_keys=%s",
                                     tool_name,
-                                    tool_args,
+                                    route,
+                                    sorted(tool_args),
                                 )
 
                                 if tool_name == END_CONVERSATION_TOOL_NAME:
@@ -771,8 +921,20 @@ class GeminiLiveSTT(SpeechToTextEntity):
                                         tool_result = await llm_api.async_call_tool(
                                             tool_input
                                         )
+                                        _LOGGER.debug(
+                                            "HA LLM tool %s succeeded",
+                                            tool_name,
+                                        )
                                     except Exception as err:  # noqa: BLE001
-                                        _LOGGER.error("Tool %s failed: %s", tool_name, err)
+                                        # HA has already scheduled any reauth
+                                        # flow (e.g. MCP OAuth) before raising;
+                                        # report a safe error back to Gemini.
+                                        _LOGGER.error(
+                                            "HA LLM tool %s failed: %s: %s",
+                                            tool_name,
+                                            err.__class__.__name__,
+                                            err,
+                                        )
                                         tool_result = {"error": str(err)}
                                 else:
                                     tool_result = {"error": "HA LLM API not available"}
@@ -1117,6 +1279,7 @@ class GeminiLiveSTT(SpeechToTextEntity):
         transcribe_gemini: bool,
         encourage_web_search: bool,
         show_text: bool,
+        llm_api_ids: list[str],
     ) -> SpeechResult:
         """Run the Live turn in the background so TTS can consume it immediately."""
         result_future: asyncio.Future[SpeechResult] = asyncio.Future()
@@ -1131,6 +1294,7 @@ class GeminiLiveSTT(SpeechToTextEntity):
                 transcribe_gemini,
                 encourage_web_search,
                 show_text,
+                llm_api_ids,
                 result_future,
             ),
             "Gemini Live audio turn",
@@ -1200,6 +1364,10 @@ class GeminiLiveSTT(SpeechToTextEntity):
         show_text = bool(
             config.get(CONF_SHOW_TEXT, DEFAULT_SHOW_TEXT)
         )
+        llm_api_ids = normalize_llm_api_selection(
+            config.get(CONF_LLM_HASS_API),
+            DEFAULT_LLM_HASS_API,
+        )
         set_detailed_logging(bool(config.get(CONF_DETAILED_LOGGING, False)))
 
         _LOGGER.warning(
@@ -1225,4 +1393,5 @@ class GeminiLiveSTT(SpeechToTextEntity):
             transcribe_gemini,
             encourage_web_search,
             show_text,
+            llm_api_ids,
         )

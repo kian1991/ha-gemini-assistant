@@ -18,11 +18,13 @@ from homeassistant.helpers.intent import IntentResponse
 from .const import (
     CONF_API_KEY,
     CONF_ENCOURAGE_WEB_SEARCH,
+    CONF_LLM_HASS_API,
     CONF_MODEL,
     CONF_SYSTEM_INSTRUCTION,
     CONF_TRANSCRIBE_GEMINI,
     CONF_SHOW_TEXT,
     CONF_VOICE,
+    DEFAULT_LLM_HASS_API,
     DEFAULT_SYSTEM_INSTRUCTION,
     DEFAULT_ENCOURAGE_WEB_SEARCH,
     DEFAULT_TRANSCRIBE_GEMINI,
@@ -36,9 +38,11 @@ from .const import (
 )
 from .stt import (
     END_CONVERSATION_TOOL_NAME,
+    LOCAL_TOOL_NAMES,
     _add_end_conversation_instruction,
     _add_end_conversation_tool,
     _add_search_tool_instruction,
+    _async_resolve_llm_apis,
     _escape_decode,
     _format_tools_for_gemini_live,
     _is_connection_closed_ok,
@@ -50,7 +54,7 @@ from .stt import (
 from .runtime import AudioStream, new_conversation_id
 from .const import NATIVE_AUDIO_SAMPLE_RATE
 from .memory import MEMORY_TOOL_NAMES, MEMORY_TOOLS
-from .utils import pcm_to_wav
+from .utils import normalize_llm_api_selection, pcm_to_wav
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,7 +131,7 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
         self,
         llm_context: llm.LLMContext,
     ) -> tuple[llm.APIInstance | None, list[dict[str, Any]], str]:
-        """Load HA Assist tools and the final Gemini system instruction."""
+        """Load the configured HA LLM APIs and the final Gemini system instruction."""
         config = {**self.entry.data, **self.entry.options}
         custom_instruction = config.get(CONF_SYSTEM_INSTRUCTION, "")
         encourage_web_search = bool(
@@ -139,14 +143,29 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
         show_text = bool(
             config.get(CONF_SHOW_TEXT, DEFAULT_SHOW_TEXT)
         )
+        llm_api_ids = normalize_llm_api_selection(
+            config.get(CONF_LLM_HASS_API),
+            DEFAULT_LLM_HASS_API,
+        )
         system_instruction = custom_instruction or DEFAULT_SYSTEM_INSTRUCTION
 
+        llm_api: llm.APIInstance | None = None
         try:
-            llm_api = await llm.async_get_api(
-                hass=self.hass,
-                api_id=llm.LLM_API_ASSIST,
-                llm_context=llm_context,
+            llm_api = await _async_resolve_llm_apis(
+                self.hass,
+                llm_api_ids,
+                llm_context,
             )
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Could not load HA LLM APIs %s for text path: %s: %s. "
+                "Tools will be unavailable.",
+                llm_api_ids,
+                exc.__class__.__name__,
+                exc,
+            )
+
+        if llm_api is not None:
             api_prompt = llm_api.api_prompt
             if custom_instruction:
                 system_instruction = f"{custom_instruction}\n\n{api_prompt}"
@@ -157,59 +176,37 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
                 llm_api.tools,
                 encourage_web_search,
             )
-            system_instruction = _add_end_conversation_instruction(system_instruction)
-            if not transcribe_gemini and show_text:
-                system_instruction = _add_show_text_instruction(system_instruction)
+            ha_gemini_tools = _format_tools_for_gemini_live(
+                llm_api.tools,
+                llm_api.custom_serializer,
+                encourage_web_search,
+            )
+        else:
+            ha_gemini_tools = []
 
-            gemini_tools = _add_end_conversation_tool(
-                _format_tools_for_gemini_live(
-                    llm_api.tools,
-                    llm_api.custom_serializer,
-                    encourage_web_search,
-                )
-            )
-            if not transcribe_gemini and show_text:
-                gemini_tools = _add_show_text_tool(gemini_tools)
+        system_instruction = _add_end_conversation_instruction(system_instruction)
+        if not transcribe_gemini and show_text:
+            system_instruction = _add_show_text_instruction(system_instruction)
 
-            memory_manager = self.hass.data[DOMAIN][self.entry.entry_id].get(
-                GEMINI_MEMORY_MANAGER_KEY
-            )
-            if memory_manager is not None:
-                system_instruction = (
-                    f"{system_instruction}\n\n"
-                    f"{await memory_manager.async_system_instruction()}"
-                )
-                gemini_tools = [*gemini_tools, *MEMORY_TOOLS]
+        gemini_tools = _add_end_conversation_tool(ha_gemini_tools)
+        if not transcribe_gemini and show_text:
+            gemini_tools = _add_show_text_tool(gemini_tools)
 
-            _LOGGER.debug(
-                "Conversation text path loaded %d HA Assist tools",
-                len(gemini_tools),
+        memory_manager = self.hass.data[DOMAIN][self.entry.entry_id].get(
+            GEMINI_MEMORY_MANAGER_KEY
+        )
+        if memory_manager is not None:
+            system_instruction = (
+                f"{system_instruction}\n\n"
+                f"{await memory_manager.async_system_instruction()}"
             )
-            return llm_api, gemini_tools, system_instruction
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.warning(
-                "Could not load HA Assist LLM API for text path: %s. Tools will be unavailable.",
-                exc,
-            )
-            gemini_tools = _add_end_conversation_tool([])
-            system_instruction = _add_end_conversation_instruction(system_instruction)
-            if not transcribe_gemini and show_text:
-                system_instruction = _add_show_text_instruction(system_instruction)
-                gemini_tools = _add_show_text_tool(gemini_tools)
-            memory_manager = self.hass.data[DOMAIN][self.entry.entry_id].get(
-                GEMINI_MEMORY_MANAGER_KEY
-            )
-            if memory_manager is not None:
-                system_instruction = (
-                    f"{system_instruction}\n\n"
-                    f"{await memory_manager.async_system_instruction()}"
-                )
-                gemini_tools = [*gemini_tools, *MEMORY_TOOLS]
-            return (
-                None,
-                gemini_tools,
-                system_instruction,
-            )
+            gemini_tools = [*gemini_tools, *MEMORY_TOOLS]
+
+        _LOGGER.debug(
+            "Conversation text path loaded %d Gemini tools",
+            len(gemini_tools),
+        )
+        return llm_api, gemini_tools, system_instruction
 
     async def _async_process_text_live(
         self,
@@ -297,10 +294,17 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
                                 tool_name = call.name or ""
                                 tool_args = _escape_decode(call.args or {})
                                 call_id = call.id
+                                route = (
+                                    "local"
+                                    if tool_name in LOCAL_TOOL_NAMES
+                                    else "ha_llm"
+                                )
                                 _LOGGER.info(
-                                    "Gemini Live text path tool call: %s(%s)",
+                                    "Gemini tool call (text path): "
+                                    "name=%s route=%s arg_keys=%s",
                                     tool_name,
-                                    tool_args,
+                                    route,
+                                    sorted(tool_args),
                                 )
 
                                 if tool_name == END_CONVERSATION_TOOL_NAME:
@@ -346,8 +350,17 @@ class GeminiLiveConversationAgent(conversation.ConversationEntity):
                                                 tool_args=tool_args,
                                             )
                                         )
+                                        _LOGGER.debug(
+                                            "HA LLM tool %s succeeded",
+                                            tool_name,
+                                        )
                                     except Exception as err:  # noqa: BLE001
-                                        _LOGGER.error("Tool %s failed: %s", tool_name, err)
+                                        _LOGGER.error(
+                                            "HA LLM tool %s failed: %s: %s",
+                                            tool_name,
+                                            err.__class__.__name__,
+                                            err,
+                                        )
                                         tool_result = {"error": str(err)}
                                 else:
                                     tool_result = {"error": "HA LLM API not available"}

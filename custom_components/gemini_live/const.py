@@ -12,6 +12,10 @@ CONF_TRANSCRIBE_GEMINI = "transcribe_gemini"
 CONF_ENCOURAGE_WEB_SEARCH = "encourage_web_search"
 CONF_SHOW_TEXT = "show_text"
 CONF_MEMORY_ENABLED = "memory_enabled"
+# Selected Home Assistant LLM APIs. Key matches homeassistant.const.CONF_LLM_HASS_API
+# so the option is stored the same way as in Home Assistant's own conversation
+# integrations. Kept as a local literal so tests can run without homeassistant.
+CONF_LLM_HASS_API = "llm_hass_api"
 
 DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 DEFAULT_VOICE = "Puck"
@@ -19,6 +23,11 @@ DEFAULT_TRANSCRIBE_GEMINI = False
 DEFAULT_ENCOURAGE_WEB_SEARCH = False
 DEFAULT_SHOW_TEXT = True
 DEFAULT_MEMORY_ENABLED = True
+# Matches homeassistant.helpers.llm.LLM_API_ASSIST. Entries configured before the
+# LLM API selector existed always used the Assist API, so this default preserves
+# their behavior.
+LLM_API_ASSIST = "assist"
+DEFAULT_LLM_HASS_API: list[str] = [LLM_API_ASSIST]
 GEMINI_LIVE_TTS_PLACEHOLDER = "-- gemini live --"
 DEFAULT_SYSTEM_INSTRUCTION = (
     "You are a helpful, concise voice assistant for the user's smart home, powered by Home Assistant. "

@@ -2,19 +2,21 @@
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import llm, selector
 
 from .const import (
     DOMAIN,
     CONF_API_KEY,
     CONF_DETAILED_LOGGING,
     CONF_ENCOURAGE_WEB_SEARCH,
+    CONF_LLM_HASS_API,
     CONF_MEMORY_ENABLED,
     CONF_MODEL,
     CONF_SHOW_TEXT,
     CONF_TRANSCRIBE_GEMINI,
     CONF_VOICE,
+    DEFAULT_LLM_HASS_API,
     DEFAULT_TRANSCRIBE_GEMINI,
     DEFAULT_ENCOURAGE_WEB_SEARCH,
     DEFAULT_MEMORY_ENABLED,
@@ -25,6 +27,7 @@ from .const import (
     AVAILABLE_MODELS,
     AVAILABLE_VOICES_INFO,
 )
+from .utils import normalize_llm_api_selection
 
 
 VOICE_OPTIONS = [
@@ -41,6 +44,37 @@ VOICE_SELECTOR = selector.SelectSelector(
         mode=selector.SelectSelectorMode.DROPDOWN,
     )
 )
+
+
+def _llm_api_selector(hass: HomeAssistant) -> selector.SelectSelector:
+    """Return a multi-select over the LLM APIs currently registered in HA.
+
+    The choices are dynamic: the Assist API, every loaded Model Context
+    Protocol server entry, and any other integration-registered LLM API.
+    """
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value=api.id, label=api.name)
+                for api in llm.async_get_apis(hass)
+            ],
+            multiple=True,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
+def _current_llm_api_selection(hass: HomeAssistant, config: dict) -> list[str]:
+    """Return the stored LLM API selection restricted to available APIs."""
+    known_ids = {api.id for api in llm.async_get_apis(hass)}
+    return [
+        api_id
+        for api_id in normalize_llm_api_selection(
+            config.get(CONF_LLM_HASS_API),
+            DEFAULT_LLM_HASS_API,
+        )
+        if api_id in known_ids
+    ]
 
 
 class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -62,6 +96,10 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_API_KEY): str,
                     vol.Required(CONF_MODEL, default=DEFAULT_MODEL): vol.In(AVAILABLE_MODELS),
                     vol.Required(CONF_VOICE, default=DEFAULT_VOICE): VOICE_SELECTOR,
+                    vol.Optional(
+                        CONF_LLM_HASS_API,
+                        default=list(DEFAULT_LLM_HASS_API),
+                    ): _llm_api_selector(self.hass),
                     vol.Optional(CONF_SYSTEM_INSTRUCTION): str,
                     vol.Optional(CONF_DETAILED_LOGGING, default=False): selector.BooleanSelector(),
                     vol.Optional(
@@ -116,7 +154,8 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         current_memory_enabled = config.get(
             CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED
         )
- 
+        current_llm_apis = _current_llm_api_selection(self.hass, config)
+
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(
@@ -124,6 +163,10 @@ class GeminiLiveConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_API_KEY, default=current_api_key): str,
                     vol.Required(CONF_MODEL, default=current_model): vol.In(AVAILABLE_MODELS),
                     vol.Required(CONF_VOICE, default=current_voice): VOICE_SELECTOR,
+                    vol.Optional(
+                        CONF_LLM_HASS_API,
+                        default=current_llm_apis,
+                    ): _llm_api_selector(self.hass),
                     vol.Optional(
                         CONF_SYSTEM_INSTRUCTION,
                         description={"suggested_value": current_system_instruction},
@@ -187,11 +230,16 @@ class GeminiLiveOptionsFlowHandler(config_entries.OptionsFlow):
         current_memory_enabled = config.get(
             CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED
         )
- 
+        current_llm_apis = _current_llm_api_selection(self.hass, config)
+
         schema_dict = {
             vol.Required(CONF_API_KEY, default=current_api_key): str,
             vol.Required(CONF_MODEL, default=current_model): vol.In(AVAILABLE_MODELS),
             vol.Required(CONF_VOICE, default=current_voice): VOICE_SELECTOR,
+            vol.Optional(
+                CONF_LLM_HASS_API,
+                default=current_llm_apis,
+            ): _llm_api_selector(self.hass),
             vol.Optional(
                 CONF_SYSTEM_INSTRUCTION,
                 description={"suggested_value": current_system_instruction},

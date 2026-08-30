@@ -1,7 +1,31 @@
 """Utility functions for audio processing."""
 
+from collections.abc import Sequence
 import logging
 import struct
+
+
+def normalize_llm_api_selection(
+    value: object,
+    default: Sequence[str],
+) -> list[str]:
+    """Return the configured HA LLM API IDs as a clean list.
+
+    A missing value means the config entry predates the LLM API selector, so the
+    legacy default applies. An explicit empty selection stays empty: the user
+    deliberately disabled all HA LLM APIs.
+    """
+    if value is None:
+        return list(default)
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return list(default)
+    selection: list[str] = []
+    for api_id in value:
+        if isinstance(api_id, str) and api_id and api_id not in selection:
+            selection.append(api_id)
+    return selection
 
 
 def set_detailed_logging(enabled: bool) -> None:
